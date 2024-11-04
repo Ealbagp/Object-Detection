@@ -31,15 +31,24 @@ This project involves the implementation and testing of different object proposa
 - **Description**: Contains the Edge Boxes model file (`model.yml.gz`) that was sourced online and used to implement Edge Boxes proposals.
 - **Purpose**: This model file is necessary for Edge Boxes to function and is part of the Structured Edge Detection model, required to generate edges and orientations.
 
+### 5. `Evaluation_of_Proposals_for_SS`
+- **Description**: Contains the metrics Recall and ABO for analizing the proposals. And a implementation loop to evaluate them using the selective_search method.
+- **Purpose**: This model file is necessary evaluates the proposals generated and is intended to solve Task 3.
+
+### 5. `Save and Label Proposals for Training`
+- **Description**: Contains a function to generate the labels for proposals according to whether the porposal overlaps with a ground truth pothole or not.
+- **Purpose**: This is neccesary for the creation of a DataLoader in the next task.
+
+
 ---
 
 ## To-Do List
 
-1. **Implement Metrics**
+1. **Implement Metrics** (DONE for selective search, there is left to change the loop for the Edge Boxes)
    - **Recall**: Calculate recall for each method (Edge Boxes and Selective Search) to measure how well the proposals cover the ground truth potholes.
    - **Mean Average Best Overlap (MABO)**: Implement the MABO metric to evaluate the average quality of proposals across images.
    
-2. **Save and Label Proposals for Training**
+2. **Save and Label Proposals for Training** (DONE for selective search, there is left to change it for the Edge Boxes).
    - **Save Proposals**: Save the generated proposals from both Edge Boxes and Selective Search methods.
    - **Label Proposals**: Prepare the proposals for object detector training by assigning a label to each proposal. This includes:
      - Assigning a class label if the proposal overlaps with a ground truth pothole.
