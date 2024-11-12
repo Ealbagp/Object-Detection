@@ -1,3 +1,4 @@
+#%%
 import os
 import cv2
 import selectivesearch
@@ -22,11 +23,40 @@ def parse_xml(annotation_file):
     return boxes
 
 
-# Function to run Selective Search and obtain proposals
-def get_proposals(image, num_proposals, scale = 25, sigma=0.8, min_size=300):
-    _, regions = selectivesearch.selective_search(image, scale=scale, sigma=sigma, min_size=min_size)
+import cv2
+import random
+
+# Function to run Selective Search and obtain proposals using OpenCV
+def get_proposals(image, num_proposals, scale=25, sigma=0.8, min_size=300):
+    # Initialize OpenCV's selective search segmentation object
+    ss = cv2.ximgproc.segmentation.createSelectiveSearchSegmentation()
     
-    filtered_regions = list(filter(lambda r:  r['rect'][2] > 20 and r['rect'][3] > 20, regions))
+    # Set the base image
+    ss.setBaseImage(image)
+    
+    # Create a graph segmentation based on the provided scale, sigma, and min_size
+    gs = cv2.ximgproc.segmentation.createGraphSegmentation(sigma=sigma, k=scale, min_size=min_size)
+    ss.addGraphSegmentation(gs)
+    
+    # Create selective search strategies
+    color_strategy = cv2.ximgproc.segmentation.createSelectiveSearchSegmentationStrategyColor()
+    texture_strategy = cv2.ximgproc.segmentation.createSelectiveSearchSegmentationStrategyTexture()
+    size_strategy = cv2.ximgproc.segmentation.createSelectiveSearchSegmentationStrategySize()
+    fill_strategy = cv2.ximgproc.segmentation.createSelectiveSearchSegmentationStrategyFill()
+    
+    # Combine the strategies into one
+    strategy = cv2.ximgproc.segmentation.createSelectiveSearchSegmentationStrategyMultiple(
+        color_strategy, texture_strategy, size_strategy, fill_strategy)
+    ss.addStrategy(strategy)
+    ss.switchToSelectiveSearchQuality()
+    # Process the image to get the proposed regions
+    rects = ss.process()
+    
+    # Filter regions based on size
+    filtered_regions = []
+    for x, y, w, h in rects:
+        # if w > 20 and h > 20:
+        filtered_regions.append((x, y, w, h))
     
     # Ensure the number of proposals does not exceed available regions
     num_proposals = min(num_proposals, len(filtered_regions))
@@ -34,10 +64,7 @@ def get_proposals(image, num_proposals, scale = 25, sigma=0.8, min_size=300):
     # Randomly select unique indexes from the filtered regions
     selected_regions = random.sample(filtered_regions, num_proposals)
     
-    # Extract and return the (x, y, w, h) proposals
-    proposals = [(r['rect'][0], r['rect'][1], r['rect'][2], r['rect'][3]) for r in selected_regions]
-    
-    return proposals
+    return selected_regions  # Returns a list of (x, y, w, h) tuples
 
 # Constants
 IOU_THRESHOLD = 0.5  # For recall calculation
@@ -56,6 +83,18 @@ def calculate_iou(boxA, boxB):
 
     iou = interArea / float(boxA_Area + boxB_Area - interArea)
     return iou
+
+# %%
+
+# unit test for calculate_iou
+def test_calculate_iou():
+    boxA = (0, 0, 10, 10)
+    boxB = (5, 5, 15, 15)
+    assert calculate_iou(boxA, boxB) == 0.14285714285714285
+
+test_calculate_iou()
+
+# %%
 
 # Function to evaluate proposals on a single image using recall
 def calc_recall(proposals, ground_truth_boxes, iou_threshold):
@@ -87,7 +126,13 @@ def calc_abo(proposals, ground_truth_boxes):
     return abo
     
 
+def from_min_max_to_xywh(box):
+    xmin, ymin, xmax, ymax = box
+    return (xmin, ymin, xmax - xmin, ymax - ymin)  
 
+def from_xywh_to_min_max(box):
+    xmin, ymin , w, h = box
+    return (xmin, ymin, xmin + w, ymin + h)
 
 
 import re 
@@ -120,11 +165,11 @@ def prepare_proposals(images_path, annotations_path, proposals_per_image, iou_th
         image_paths = image_paths[:count]
         label_paths = label_paths[:count]
         
-    proposal_data = np.zeros((len(image_paths), proposals_per_image, 4))
-    labels = np.zeros((len(image_paths), proposals_per_image, 1))  # Array for labels
+    proposal_data_dict = {}
+    labels_dict = {}
     
     # Function to process a single image
-    def process_image(filename):
+    def process_image(filename,scale, sigma):
         id = get_id(filename)
         image_path = os.path.join(images_path, filename)
         annotation_file = os.path.join(annotations_path, filename.replace('.jpg', '.xml'))
@@ -147,15 +192,17 @@ def prepare_proposals(images_path, annotations_path, proposals_per_image, iou_th
             )
             for (xmin, ymin, xmax, ymax) in ground_truth_boxes
         ]
+        
+        
                 
         proposals = get_proposals(image, proposals_per_image, scale=scale, sigma=sigma, min_size=min_size)
         
         
-        image_proposals = np.zeros((proposals_per_image, 4))
-        image_labels = np.zeros((proposals_per_image, 1))
+        image_proposals = []
+        image_labels = []
 
-        for i, (x, y, w, h) in enumerate(proposals):
-            proposal_box = (x, y, x + w, y + h)
+        for (x, y, w, h) in proposals:
+            proposal_box = from_xywh_to_min_max((x, y, w, h))
             max_iou = 0  # Initialize maximum IoU for the current proposal
 
             for gt_box in ground_truth_boxes:
@@ -164,24 +211,31 @@ def prepare_proposals(images_path, annotations_path, proposals_per_image, iou_th
                     max_iou = iou  # Update maximum IoU if a new higher value is found
 
             # Assign label based on maximum IoU found
+            if max_iou < 0.2:
+                continue
             label = 1 if max_iou >= iou_threshold else 0
 
-            image_proposals[i, :] = [x, y, w, h]
-            image_labels[i] = label
+            image_proposals.append([x, y, w, h])
+            image_labels.append([label])
 
+        # Convert lists to numpy arrays
+        image_proposals = np.array(image_proposals)
+        image_labels = np.array(image_labels)
+        
         return id, image_proposals, image_labels
 
     # Use ThreadPoolExecutor to parallelize the image processing
     with ThreadPoolExecutor(max_workers= 8) as executor:
-        futures = {executor.submit(process_image, filename): filename for filename in image_paths}
+        futures = {executor.submit(process_image, filename, scale, sigma): filename for filename in image_paths}
         for future in futures:
-            try:
-                id, image_proposals, image_labels = future.result()
-                proposal_data[id - 1, :, :] = image_proposals
-                labels[id - 1, :] = image_labels
-            except Exception as e:
-                print(f"Error processing {futures[future]}: {e}")
-
+            
+            id, image_proposals, image_labels = future.result()
+            proposal_data_dict[id] = image_proposals
+            labels_dict[id] = image_labels
+           
+    proposal_data = [proposal_data_dict[id] for id in sorted(proposal_data_dict.keys())]
+    labels = [labels_dict[id] for id in sorted(labels_dict.keys())] 
+    
     return proposal_data, labels
 
 
@@ -189,3 +243,35 @@ def load_image(image_path):
     image = cv2.imread(image_path)
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     return image
+
+
+def visualize_image(image, boxes,labels, proposals=None, scale_x=1.0, scale_y=1.0):
+    # Adjust ground truth boxes according to the scale
+    
+    # Convert color for display
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    
+    # Draw ground truth boxes in blue
+    for (xmin, ymin, xmax, ymax) in boxes:
+        cv2.rectangle(image, (xmin, ymin), (xmax, ymax), (255, 0, 0), 2)
+    
+    # Draw Selective Search proposals in green if provided
+    if proposals is not None:
+        for (x, y, w, h), label in zip(proposals,labels):
+            # Adjust Selective Search boxes according to the scale
+            x = x * scale_x
+            y = y * scale_y
+            w = w * scale_x
+            h = h * scale_y
+
+            x, y, w, h = int(x), int(y), int(w), int(h)
+            if label == 1:
+                cv2.rectangle(image, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            else:
+                cv2.rectangle(image, (x, y), (x + w, y + h), (0, 0, 255), 1)
+                
+            # cv2.putText(image, (15, 15), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+
+    plt.imshow(image)
+    plt.axis('off')
+    plt.show()
