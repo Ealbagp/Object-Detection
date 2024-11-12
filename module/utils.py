@@ -223,9 +223,12 @@ def prepare_proposals(images_path, annotations_path, proposals_per_image, iou_th
         image_labels = np.array(image_labels)
         
         return id, image_proposals, image_labels
-
+    
+    cpu_count = os.cpu_count()*0.5
+    cpu_count = min(cpu_count, len(image_paths))
+    
     # Use ThreadPoolExecutor to parallelize the image processing
-    with ThreadPoolExecutor(max_workers= 8) as executor:
+    with ThreadPoolExecutor(max_workers= cpu_count) as executor:
         futures = {executor.submit(process_image, filename, scale, sigma): filename for filename in image_paths}
         for future in futures:
             
