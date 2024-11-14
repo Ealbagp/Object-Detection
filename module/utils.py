@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import xml.etree.ElementTree as ET
 import numpy as np
 import random
-
+import tqdm
 # Helper function to parse the XML file for ground truth bounding boxes
 def parse_xml(annotation_file):
     tree = ET.parse(annotation_file)
@@ -180,18 +180,8 @@ def prepare_proposals(images_path, annotations_path, proposals_per_image, iou_th
         ground_truth_boxes = parse_xml(annotation_file)
         # scale ground truth boxes
         original_height, original_width = original_size
-        height_ratio = image_height / original_height
-        width_ratio = image_width / original_width
         
-        ground_truth_boxes = [
-            (
-                int(xmin * width_ratio),
-                int(ymin * height_ratio),
-                int(xmax * width_ratio),
-                int(ymax * height_ratio)
-            )
-            for (xmin, ymin, xmax, ymax) in ground_truth_boxes
-        ]
+        ground_truth_boxes = [resize_box(box, (original_width, original_height), image_shape) for box in ground_truth_boxes]
         
         
                 
@@ -221,13 +211,13 @@ def prepare_proposals(images_path, annotations_path, proposals_per_image, iou_th
         
         return id, image_proposals, image_labels
     
-    cpu_count = os.cpu_count()*0.5
+    cpu_count = os.cpu_count()*0.8
     cpu_count = min(cpu_count, len(image_paths))
     
     # Use ThreadPoolExecutor to parallelize the image processing
     with ThreadPoolExecutor(max_workers= cpu_count) as executor:
         futures = {executor.submit(process_image, filename, scale, sigma): filename for filename in image_paths}
-        for future in futures:
+        for future in tqdm.tqdm(futures):
             
             id, image_proposals, image_labels = future.result()
             proposal_data_dict[id] = image_proposals
@@ -275,3 +265,62 @@ def visualize_image(image, boxes,labels, proposals=None, scale_x=1.0, scale_y=1.
     plt.imshow(image)
     plt.axis('off')
     plt.show()
+    
+def visualize_image(image, boxes, proposals=None, scale_x=1.0, scale_y=1.0):
+    # Adjust ground truth boxes according to the scale
+    adjusted_boxes = [(int(xmin * scale_x), int(ymin * scale_y), int(xmax * scale_x), int(ymax * scale_y)) for xmin, ymin, xmax, ymax in boxes]
+    
+    # Convert color for display
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    
+    # Draw ground truth boxes in blue
+    for (xmin, ymin, xmax, ymax) in adjusted_boxes:
+        cv2.rectangle(image, (xmin, ymin), (xmax, ymax), (255, 0, 0), 2)
+    
+    # Draw Selective Search proposals in green if provided
+    if proposals is not None:
+        for (x, y, w, h) in proposals:
+            x, y, w, h = int(x), int(y), int(w), int(h)
+
+            cv2.rectangle(image, (x, y), (x + w, y + h), (0, 255, 0), 1)
+            # cv2.putText(image, (15, 15), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+
+    plt.imshow(image)
+    plt.axis('off')
+    plt.show()
+
+def calculate_proposal_label(proposal, ground_truth_boxes, iou_threshold=0.5):
+    proposal_box = from_xywh_to_min_max(proposal)
+    max_iou = 0  # Initialize maximum IoU for the current proposal
+
+    for gt_box in ground_truth_boxes:
+        iou = calculate_iou(proposal_box, gt_box)
+        if iou > max_iou:
+            max_iou = iou  # Update maximum IoU if a new higher value is found
+
+    label = 1 if max_iou >= iou_threshold else 0
+    return label
+
+# Resize box
+def resize_box(box, original_size, new_size):
+    original_width, original_height = original_size
+    new_width, new_height = new_size
+
+    height_ratio = new_height / original_height
+    width_ratio = new_width / original_width
+    
+    
+    
+    
+    
+
+    xmin, ymin, xmax, ymax = box
+    new_xmin = int(xmin * width_ratio)
+    new_ymin = int(ymin * height_ratio)
+    new_xmax = int(xmax * width_ratio)
+    new_ymax = int(ymax * height_ratio)
+
+    return new_xmin, new_ymin, new_xmax, new_ymax
+
+def resize_boxes(boxes, original_size, new_size):
+    return [resize_box(box, original_size, new_size) for box in boxes]
