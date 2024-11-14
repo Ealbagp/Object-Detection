@@ -210,9 +210,6 @@ def prepare_proposals(images_path, annotations_path, proposals_per_image, iou_th
                 if iou > max_iou:
                     max_iou = iou  # Update maximum IoU if a new higher value is found
 
-            # Assign label based on maximum IoU found
-            if max_iou < 0.2:
-                continue
             label = 1 if max_iou >= iou_threshold else 0
 
             image_proposals.append([x, y, w, h])
