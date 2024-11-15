@@ -18,10 +18,10 @@ proposal_path = "tmp/"
 # This does not scale. We should save annotation proposals in a file. 
 
 
-IMAGE_WIDTH = 800
-IMAGE_HEIGHT = 800
+# IMAGE_WIDTH = 800
+# IMAGE_HEIGHT = 800
 
-IMAGE_SIZE = (IMAGE_HEIGHT, IMAGE_WIDTH)
+# IMAGE_SIZE = (IMAGE_HEIGHT, IMAGE_WIDTH)
 
 img_files = os.listdir(img_path)
 proposal_files = os.listdir(proposal_path)
@@ -33,19 +33,19 @@ proposal_paths = np.array(list(filter(lambda file: file.endswith(".xml"), propos
 image_paths = sorted(image_paths, key=get_id)
 label_paths = sorted(label_paths, key=get_id)
 proposal_paths = sorted(proposal_files, key=get_id)
-print(image_paths)
+# print(image_paths)
 
 # Limit to the first 100 images
-image_paths = image_paths[:100]
-label_paths = label_paths[:100]
-proposal_paths = proposal_paths[:100]
+# image_paths = image_paths[:100]
+# label_paths = label_paths[:100]
+# proposal_paths = proposal_paths[:100]
 
 gt_boxes = [parse_xml(anno_path + label_path) for label_path in label_paths]
 images = [load_image(img_path + img) for img in image_paths]
 proposals = [parse_xml(proposal_path + proposal) for proposal in proposal_paths]
-gt_boxes = [resize_boxes(boxs, (image.shape[1], image.shape[0]), IMAGE_SIZE) for boxs, image in zip(gt_boxes, images)]
+# gt_boxes = [resize_boxes(boxs, (image.shape[1], image.shape[0]), IMAGE_SIZE) for boxs, image in zip(gt_boxes, images)]
 
-images = [cv2.resize(image, IMAGE_SIZE) for image in images]
+# images = [cv2.resize(image, IMAGE_SIZE) for image in images]
 
 
 # resize ground truth to ensure that they match the image size
@@ -79,7 +79,6 @@ def visualize_image(image, boxes,labels, proposals=None):
     plt.axis('off')
     plt.show()
     
-image_count = 10
 def label_proposals(proposals, ground_truth_boxes, iou_threshold=0.5, scale_x=1.0, scale_y=1.0):
     labeled_proposals = []
 
@@ -106,18 +105,20 @@ labels = label_proposals(proposals=proposals, ground_truth_boxes=gt_boxes, iou_t
 
 print(proposals[0])
 
-for i in range(image_count):
-    # Calculate scale_x and scale_y
-    # scale_x = images[i].shape[1] / IMAGE_WIDTH
-    # scale_y = images[i].shape[0] / IMAGE_HEIGHT 
-    # convert to xywh for proposals
+has_no_overlap = 0
+images_with_no_overlap = []
+for i in range(len(labels)):
+    if sum(labels[i]) == 0:
+        has_no_overlap += 1
+        images_with_no_overlap.append(i)
+print(has_no_overlap)
 
-    visualize_image(images[i], gt_boxes[i], labels[i], proposals[i])
-
-
+for im in images_with_no_overlap:
+    visualize_image(images[im], gt_boxes[im], labels[im], None)
 
 # Example usage:
 # proposals = [[(x, y, w, h), ...], ...]
 # ground_truth_boxes = [[(xmin, ymin, xmax, ymax), ...], ...]
 # labeled_proposals = label_proposals(proposals, ground_truth_boxes)
 # %%
+

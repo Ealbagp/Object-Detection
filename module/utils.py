@@ -145,9 +145,9 @@ def get_id(filename):
     return int(match.group()) if match else 0
 
 
-def prepare_proposals(images_path, annotations_path, proposals_per_image, iou_threshold=0.5,scale=100, sigma=1.2, min_size=300,image_shape=(400,400),count=None):
+def prepare_proposals(images_path, annotations_path, proposals_per_image, iou_threshold=0.5,scale=100, sigma=1.2, min_size=300,image_shape=None,count=None):
 
-    image_height, image_width = image_shape
+    # image_height, image_width = image_shape
 
     # Get image and label paths
     files = os.listdir(images_path)
@@ -176,12 +176,15 @@ def prepare_proposals(images_path, annotations_path, proposals_per_image, iou_th
 
         image = cv2.imread(image_path)
         original_size = image.shape[:2]
-        image = cv2.resize(image, image_shape)
+        if image_shape:
+            image = cv2.resize(image, image_shape)
         ground_truth_boxes = parse_xml(annotation_file)
-        # scale ground truth boxes
-        original_height, original_width = original_size
         
-        ground_truth_boxes = [resize_box(box, (original_width, original_height), image_shape) for box in ground_truth_boxes]
+        # scale ground truth boxes
+        # We only resize if given an image shape. 
+        if image_shape:
+            original_height, original_width = original_size 
+            ground_truth_boxes = [resize_box(box, (original_width, original_height), image_shape) for box in ground_truth_boxes]
         
         
                 
