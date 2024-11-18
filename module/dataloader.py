@@ -15,16 +15,8 @@ from module.utils import (
 )
 
 class PotholeDataset(Dataset):
-    def __init__(self, 
-                 images_path, 
-                 proposals_path, 
-                 gt_path, 
-                 image_size=None, 
-                 proposals_per_batch=20, 
-                 balance=None,
-                 transform=None,
-                 iou_threshold=0.5,
-                 proposal_size=None):
+    def __init__(self, images_path, proposals_path, gt_path, image_size=None, proposals_per_batch=20, balance=None, transform=None, iou_threshold=0.5, proposal_size=(64, 64), split_ratios=(0.7, 0.15, 0.15), split="train"):
+        self.images_path = images_path
         self.images_path = images_path
         self.proposals_path = proposals_path
         self.gt_path = gt_path
@@ -34,6 +26,8 @@ class PotholeDataset(Dataset):
         self.transform = transform
         self.iou_threshold = iou_threshold
         self.proposal_size = proposal_size
+        self.split_ratios = split_ratios  # Ratios for train/val/test splits
+        self.split = split
 
         # Get sorted list of files
         self.image_files = sorted(
@@ -73,6 +67,9 @@ class PotholeDataset(Dataset):
         # Label proposals based on IoU with ground truth boxes
         self.labels = []
         for gt_boxes, proposals in zip(self.gt, self.proposals):
+            if len(gt_boxes) == 0 or len(proposals) == 0:
+                continue  # Skip if there are no proposals or ground-truth boxes
+
             labels = []
             for proposal in proposals:
                 max_iou = 0
@@ -85,13 +82,35 @@ class PotholeDataset(Dataset):
                 labels.append(label)
             labels = torch.tensor(labels, dtype=torch.long)
             self.labels.append(labels)
-            
+        
         # Remove images which have no positive proposals using tensor indexing
         to_keep = ~torch.tensor([labels.sum() == 0 for labels in self.labels])
         self.image_files = list(np.array(self.image_files)[to_keep.numpy()])
         self.gt = list(np.array(self.gt, dtype=object)[to_keep.numpy()])
         self.proposals = list(np.array(self.proposals, dtype=object)[to_keep.numpy()])
         self.labels = list(np.array(self.labels, dtype=object)[to_keep.numpy()])
+
+        # Apply train/val/test split
+        self.__apply_split()
+
+    def __apply_split(self):
+        total_samples = len(self.image_files)
+        train_end = int(self.split_ratios[0] * total_samples)
+        val_end = train_end + int(self.split_ratios[1] * total_samples)
+
+        if self.split == "train":
+            indices = range(0, train_end)
+        elif self.split == "val":
+            indices = range(train_end, val_end)
+        elif self.split == "test":
+            indices = range(val_end, total_samples)
+        else:
+            raise ValueError(f"Invalid split name '{self.split}', expected 'train', 'val', or 'test'.")
+
+        self.image_files = [self.image_files[i] for i in indices]
+        self.gt = [self.gt[i] for i in indices]
+        self.proposals = [self.proposals[i] for i in indices]
+        self.labels = [self.labels[i] for i in indices]
 
     def __len__(self):
         return len(self.image_files)
@@ -131,19 +150,28 @@ class PotholeDataset(Dataset):
 
         # Select balanced proposals and labels
         proposals = proposals[selected_indices]
-        labels = labels[selected_indices]
+        labels = torch.tensor(labels[selected_indices])
 
         # Cut out proposals from the image and resize them
         proposal_images = []
         for proposal in proposals:
             x, y, w, h = proposal.tolist()
             x, y, w, h = int(x), int(y), int(w), int(h)
+
+            # Ensure the crop is within image bounds
+            img_height, img_width = image.shape[1], image.shape[2]  # Channels-first format
+            x = max(0, min(x, img_width - 1))
+            y = max(0, min(y, img_height - 1))
+            w = max(1, min(w, img_width - x))  # Ensure w > 0
+            h = max(1, min(h, img_height - y))  # Ensure h > 0
+
             proposal_img = image[:, y:y+h, x:x+w]
             if self.proposal_size:
                 proposal_img = F.interpolate(proposal_img.unsqueeze(0), size=self.proposal_size, mode='bilinear', align_corners=False).squeeze(0)
             proposal_images.append(proposal_img)
         
         proposal_images = torch.stack(proposal_images)  # Shape: (proposals_per_batch, C, H, W)
+        # print(f"Proposal images shape AFTER stack: {proposal_images.shape}")
         
         # Apply transform if specified
         if self.transform:
