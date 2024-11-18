@@ -4,7 +4,7 @@ import torch.nn as nn
 init_type = init=nn.init.xavier_uniform_
 
 class Network(nn.Module):
-    def __init__(self):
+    def __init__(self, proposal_size=(64, 64)):
         super(Network, self).__init__()
         self.convolutional1 = nn.Sequential(
                 nn.Conv2d(3, 128, kernel_size=7, padding=3),
@@ -33,7 +33,7 @@ class Network(nn.Module):
         
 
         self.fully_connected = nn.Sequential(
-                nn.Linear(8 * 8 * 128, 1024), # 64 by 3 convolutions = (((64 / 2) / 2) / 2) = 8
+                nn.Linear((int)(proposal_size[0] / 8) * (int)(proposal_size[1] / 8) * 128, 1024), # 64 by 3 convolutions = (((64 / 2) / 2) / 2) = 8
                 nn.ReLU(),
                 nn.Dropout(0.30),
                 nn.Linear(1024, 512),
