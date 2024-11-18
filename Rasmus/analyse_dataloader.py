@@ -29,8 +29,8 @@ import numpy as np
 import torch.utils.data as data
 # Moving active directory to root folder to get module to work
 
-img_path = "../Potholes/annotated-images/"
-anno_path = "../Potholes/annotated-images/"
+img_path = "Potholes/annotated-images/"
+anno_path = "Potholes/annotated-images/"
 proposal_path = "tmp/"
 # This does not scale. We should save annotation proposals in a file. 
 
