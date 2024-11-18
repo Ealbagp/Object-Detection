@@ -22,6 +22,39 @@ def parse_xml(annotation_file):
 
     return boxes
 
+def parse_xml_with_labels(annotation_file):
+    """Parse XML file to get bounding boxes and their associated labels.
+    
+    Args:
+        annotation_file: Path to XML file
+        
+    Returns:
+        tuple: (boxes, labels) where boxes is list of (xmin,ymin,xmax,ymax) and 
+               labels is list of corresponding label values
+    """
+    tree = ET.parse(annotation_file)
+    root = tree.getroot()
+    boxes = []
+    labels = []
+    
+    for obj in root.findall('object'):
+        bbox = obj.find('bndbox')
+        xmin = int(bbox.find('xmin').text)
+        ymin = int(bbox.find('ymin').text)
+        xmax = int(bbox.find('xmax').text)
+        ymax = int(bbox.find('ymax').text)
+        boxes.append((xmin, ymin, xmax, ymax))
+        
+        # Get label - first try 'label' element, fallback to checking if name is 'pothole'
+        label_elem = obj.find('label')
+        if label_elem is not None:
+            labels.append(int(label_elem.text))
+        else:
+            # If no explicit label, use 1 for pothole and 0 for background
+            name = obj.find('name').text
+            labels.append(1 if name.lower() == 'pothole' else 0)
+
+    return boxes, labels
 
 import cv2
 import random

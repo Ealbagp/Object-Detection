@@ -11,7 +11,8 @@ from module.utils import (
     get_id,
     load_image,
     resize_boxes,
-    from_xywh_to_min_max
+    from_xywh_to_min_max,
+    parse_xml_with_labels
 )
 
 class PotholeDataset(Dataset):
@@ -57,31 +58,14 @@ class PotholeDataset(Dataset):
             self.gt = [resize_boxes(gt, original_size, self.image_size) for gt, original_size in zip(self.gt, self.image_sizes)]
         self.gt = [torch.tensor(gt, dtype=torch.int32) for gt in self.gt]
         
-        # Load proposals
-        self.proposals = [parse_xml(os.path.join(self.proposals_path, f)) for f in self.proposal_files]
-        self.proposals = [torch.tensor(proposal, dtype=torch.int32) for proposal in self.proposals]
-        
-        # Ensure the number of images, ground truths, and proposals are the same
-        assert len(self.image_files) == len(self.gt) == len(self.proposals), "Dataset files mismatch"
-        
-        # Label proposals based on IoU with ground truth boxes
-        self.labels = []
-        for gt_boxes, proposals in zip(self.gt, self.proposals):
-            if len(gt_boxes) == 0 or len(proposals) == 0:
-                continue  # Skip if there are no proposals or ground-truth boxes
+        # Load proposals and labels directly
+        self.proposals_labels = [parse_xml_with_labels(os.path.join(self.proposals_path, f)) 
+                                 for f in self.proposal_files]
+        self.proposals = [torch.tensor(pl[0], dtype=torch.int32) for pl in self.proposals_labels]
+        self.labels = [torch.tensor(pl[1], dtype=torch.long) for pl in self.proposals_labels]
 
-            labels = []
-            for proposal in proposals:
-                max_iou = 0
-                for gt_box in gt_boxes:
-                    prop = from_xywh_to_min_max(proposal)
-                    iou = calculate_iou(prop, gt_box)
-                    if iou > max_iou:
-                        max_iou = iou
-                label = 1 if max_iou >= self.iou_threshold else 0
-                labels.append(label)
-            labels = torch.tensor(labels, dtype=torch.long)
-            self.labels.append(labels)
+        # Ensure the number of images, ground truths, proposals, and labels are the same
+        assert len(self.image_files) == len(self.gt) == len(self.proposals) == len(self.labels), "Dataset files mismatch"
         
         # Remove images which have no positive proposals using tensor indexing
         to_keep = ~torch.tensor([labels.sum() == 0 for labels in self.labels])
