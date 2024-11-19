@@ -105,7 +105,14 @@ class PotholeDataset(Dataset):
         image = load_image(image_path)
         if self.image_size:
            image = cv2.resize(image, self.image_size)
-        image = torch.tensor(image, dtype=torch.float32).permute(2, 0, 1)
+        
+        
+        # Convert BGR to RGB
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        
+        
+        
+        #image = torch.tensor(image, dtype=torch.float32).permute(2, 0, 1)
 
         gt_boxes = self.gt[idx]
         proposals = self.proposals[idx]
@@ -134,7 +141,7 @@ class PotholeDataset(Dataset):
 
         # Select balanced proposals and labels
         proposals = proposals[selected_indices]
-        labels = torch.tensor(labels[selected_indices])
+        labels = torch.tensor(labels[selected_indices], dtype=torch.long) # Class indices should be long for torch to work.
 
         # Cut out proposals from the image and resize them
         proposal_images = []
@@ -143,23 +150,36 @@ class PotholeDataset(Dataset):
             x, y, w, h = int(x), int(y), int(w), int(h)
 
             # Ensure the crop is within image bounds
-            img_height, img_width = image.shape[1], image.shape[2]  # Channels-first format
+            img_height, img_width = image.shape[1], image.shape[2]
             x = max(0, min(x, img_width - 1))
             y = max(0, min(y, img_height - 1))
-            w = max(1, min(w, img_width - x))  # Ensure w > 0
-            h = max(1, min(h, img_height - y))  # Ensure h > 0
+            w = max(1, min(w, img_width - x))
+            h = max(1, min(h, img_height - y))
 
-            proposal_img = image[:, y:y+h, x:x+w]
+            # Extract proposal and prepare for transforms
+            proposal_img = image[y:y+h, x:x+w, :]
+            
+            # Apply transforms (includes ToTensor which handles CHW conversion)
+            if self.transform:
+                proposal_img = self.transform(proposal_img)  # Now shape is [3, H, W]
+            
+            # Resize if needed
             if self.proposal_size:
-                proposal_img = F.interpolate(proposal_img.unsqueeze(0), size=self.proposal_size, mode='bilinear', align_corners=False).squeeze(0)
+                proposal_img = F.interpolate(
+                    proposal_img.unsqueeze(0), 
+                    size=self.proposal_size, 
+                    mode='bilinear', 
+                    align_corners=False
+                ).squeeze(0)
+            
             proposal_images.append(proposal_img)
-        
-        proposal_images = torch.stack(proposal_images)  # Shape: (proposals_per_batch, C, H, W)
+
+        # Stack the correctly shaped tensors
+        proposal_images = torch.stack(proposal_images)  # Final shape: [N, 3, H, W]
         # print(f"Proposal images shape AFTER stack: {proposal_images.shape}")
         
         # Apply transform if specified
-        if self.transform:
-            proposal_images = self.transform(proposal_images)
+        
 
         dict_data = {
             'image': image,
@@ -169,5 +189,11 @@ class PotholeDataset(Dataset):
             'proposal_images': proposal_images
         }
         
-        return dict_data
+        return {
+            'image': image,
+            'proposals': proposals,
+            'labels': labels,
+            'gt_boxes': gt_boxes,
+            'proposal_images': proposal_images
+        }
 
