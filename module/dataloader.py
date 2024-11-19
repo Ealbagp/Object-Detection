@@ -140,7 +140,7 @@ class PotholeDataset(Dataset):
 
             # Adjust for availability
             num_pos_samples = min(num_pos_samples, len(pos_indices))
-            num_neg_samples = min(num_neg_samples, len(neg_indices))
+            num_neg_samples = self.proposals_per_batch - num_pos_samples
 
             # Sample indices
             pos_samples = pos_indices[torch.randperm(len(pos_indices))[:num_pos_samples]]

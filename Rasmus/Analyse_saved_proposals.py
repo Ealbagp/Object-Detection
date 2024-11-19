@@ -57,9 +57,6 @@ def visualize_image(image, boxes,labels, proposals=None):
     # Convert color for display
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     
-    # Draw ground truth boxes in blue
-    for (xmin, ymin, xmax, ymax) in boxes:
-        cv2.rectangle(image, (xmin, ymin), (xmax, ymax), (255, 0, 0), 2)
     
     # Draw Selective Search proposals in green if provided
     if proposals is not None:
@@ -75,6 +72,10 @@ def visualize_image(image, boxes,labels, proposals=None):
                 
             # cv2.putText(image, (15, 15), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
+    # Draw ground truth boxes in blue
+    for (xmin, ymin, xmax, ymax) in boxes:
+        cv2.rectangle(image, (xmin, ymin), (xmax, ymax), (255, 0, 0), 2)
+    
     plt.imshow(image)
     plt.axis('off')
     plt.show()
@@ -113,8 +114,10 @@ for i in range(len(labels)):
         images_with_no_overlap.append(i)
 print(has_no_overlap)
 
-for im in images_with_no_overlap:
-    visualize_image(images[im], gt_boxes[im], labels[im], None)
+count = 5
+
+for im in range(5):
+    visualize_image(images[im], gt_boxes[im], labels[im][:400], proposals[im][:400])
 
 # Example usage:
 # proposals = [[(x, y, w, h), ...], ...]
