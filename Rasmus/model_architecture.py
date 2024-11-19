@@ -43,7 +43,7 @@ class Network(nn.Module):
                 nn.ReLU(),
                 nn.Linear(256, 64),
                 nn.ReLU(),
-                nn.Linear(64, 2),
+                nn.Linear(64, 1),
                 # nn.Sigmoid()
                 # nn.Softmax(dim=1)
                 )

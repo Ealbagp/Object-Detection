@@ -16,7 +16,18 @@ from module.utils import (
 )
 
 class PotholeDataset(Dataset):
-    def __init__(self, images_path, proposals_path, gt_path, image_size=None, proposals_per_batch=20, balance=None, transform=None, iou_threshold=0.5, proposal_size=(64, 64), split_ratios=(0.7, 0.15, 0.15), split="train"):
+    def __init__(self, 
+                 images_path, 
+                 proposals_path, 
+                 gt_path, 
+                 image_size=None, 
+                 proposals_per_batch=20, 
+                 balance=None, 
+                 transform=None, 
+                 iou_threshold=0.5, 
+                 proposal_size=(64, 64), 
+                 split_ratios=(0.7, 0.15, 0.15), 
+                 split="train"):
         self.images_path = images_path
         self.images_path = images_path
         self.proposals_path = proposals_path
@@ -141,7 +152,7 @@ class PotholeDataset(Dataset):
 
         # Select balanced proposals and labels
         proposals = proposals[selected_indices]
-        labels = torch.tensor(labels[selected_indices], dtype=torch.long) # Class indices should be long for torch to work.
+        labels = labels[selected_indices].long() # Class indices should be long for torch to work.
 
         # Cut out proposals from the image and resize them
         proposal_images = []
@@ -150,11 +161,11 @@ class PotholeDataset(Dataset):
             x, y, w, h = int(x), int(y), int(w), int(h)
 
             # Ensure the crop is within image bounds
-            img_height, img_width = image.shape[1], image.shape[2]
-            x = max(0, min(x, img_width - 1))
-            y = max(0, min(y, img_height - 1))
-            w = max(1, min(w, img_width - x))
-            h = max(1, min(h, img_height - y))
+            img_height, img_width = image.shape[0], image.shape[1]
+            x = max(0, x)
+            y = max(0, y)
+            w = min(w, img_width - x)
+            h = min(h, img_height - y)
 
             # Extract proposal and prepare for transforms
             proposal_img = image[y:y+h, x:x+w, :]
@@ -162,6 +173,8 @@ class PotholeDataset(Dataset):
             # Apply transforms (includes ToTensor which handles CHW conversion)
             if self.transform:
                 proposal_img = self.transform(proposal_img)  # Now shape is [3, H, W]
+            else:
+                proposal_img = torch.tensor(proposal_img, dtype=torch.float32).permute(2, 0, 1)
             
             # Resize if needed
             if self.proposal_size:
